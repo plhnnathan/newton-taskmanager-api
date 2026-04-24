@@ -5,6 +5,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using TaskManager.Api.Data;
 using TaskManager.Api.Models;
+using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,13 +14,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // ── ASP.NET Core Identity ───────────────────────────────────────────
-// Registra o sistema de identidade com AppUser (IdentityUser customizado)
-// e IdentityRole para controle de papéis (Admin, User).
-// O Identity cuida de: hash de senha, validação, lockout e armazenamento.
 builder.Services.AddIdentity<AppUser, IdentityRole>(options =>
     {
-        // Regras de senha simplificadas para ambiente didático.
-        // Em produção, usem os padrões ou regras mais rígidas.
         options.Password.RequireDigit = false;
         options.Password.RequireUppercase = false;
         options.Password.RequireNonAlphanumeric = false;
@@ -37,8 +33,6 @@ var jwtAudience = builder.Configuration["Jwt:Audience"];
 
 builder.Services.AddAuthentication(options =>
     {
-        // IMPORTANTE: sem estas duas linhas, o Identity usa cookies como
-        // esquema padrão e o [Authorize] nos controllers não funciona com JWT.
         options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
         options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
     })
@@ -53,14 +47,11 @@ builder.Services.AddAuthentication(options =>
             ValidIssuer = jwtIssuer,
             ValidAudience = jwtAudience,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
-            ClockSkew = TimeSpan.Zero // Remove tolerância padrão de 5 min
+            ClockSkew = TimeSpan.Zero
         };
     });
 
 // ── Autorização: Policies ───────────────────────────────────────────
-// A Policy "CanDeleteTask" exige que o usuário tenha a role "Admin".
-// Policies são mais flexíveis que [Authorize(Roles = "...")]:
-// permitem combinar roles, claims e lógica customizada em um único lugar.
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("CanDeleteTask", policy =>
@@ -69,7 +60,39 @@ builder.Services.AddAuthorization(options =>
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+
+// 👇 2. SUBSTITUA O AddSwaggerGen() ANTIGO POR ESTE BLOCO ABAIXO 👇
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "TaskManager.Api", Version = "v1" });
+
+    // Define o esquema de segurança (Botão Authorize)
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "Bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "Insira o token JWT gerado no endpoint de login."
+    });
+
+    // Aplica o requisito de segurança globalmente (Aparecer os cadeados)
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
 
 var app = builder.Build();
 
@@ -94,9 +117,6 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// ORDEM IMPORTA: Authentication ANTES de Authorization.
-// Authentication decodifica e valida o token (quem é você?).
-// Authorization verifica permissões (o que você pode fazer?).
 app.UseAuthentication();
 app.UseAuthorization();
 
