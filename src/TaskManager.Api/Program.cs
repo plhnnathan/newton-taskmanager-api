@@ -61,12 +61,10 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 
-// 👇 2. SUBSTITUA O AddSwaggerGen() ANTIGO POR ESTE BLOCO ABAIXO 👇
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "TaskManager.Api", Version = "v1" });
 
-    // Define o esquema de segurança (Botão Authorize)
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Name = "Authorization",
@@ -77,7 +75,6 @@ builder.Services.AddSwaggerGen(c =>
         Description = "Insira o token JWT gerado no endpoint de login."
     });
 
-    // Aplica o requisito de segurança globalmente (Aparecer os cadeados)
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
         {
